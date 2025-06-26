@@ -2,33 +2,46 @@ import numpy as np
 
 nInst = 50
 maxDollarPosition = 10000
+currentPos = np.zeros(nInst, dtype=int)  # tracks position over time
+
 
 def getMyPosition(prcSoFar):
+    global currentPos
+
     nInst, nDays = prcSoFar.shape
-    positions = np.zeros(nInst, dtype=int)
-    breakout_window = 20
+    newPos = np.copy(currentPos)
+    
+    short_window = 5
+    long_window = 20
+    buffer = 0.015
+    posScale = 1
 
-    #no change for first 20 days as this is the data we are getting signals from
-    if nDays < breakout_window + 1:
-        return positions
-
-
+    # not enough data to calculate momentum
+    if nDays < long_window:
+        return newPos  
+    
     for i in range(nInst):
-        recent_prices = prcSoFar[i, -breakout_window-1:-1]
-        price_today = prcSoFar[i, -1]
+        prices = prcSoFar[i, :]
+        price_today = prices[-1]
 
-        high = np.max(recent_prices)
-        low = np.min(recent_prices)
+        if price_today < 1e-6:
+            continue  
 
+        short_avg = np.mean(prices[-short_window:])
+        long_avg = np.mean(prices[-long_window:])
+        num_shares = int(maxDollarPosition * posScale / price_today)
 
-        #if current price is higher or lower than max or min in last 20 days, buy/put maximum amount
-        if price_today > high:
-            num_shares = int(maxDollarPosition / price_today)
-            positions[i] = num_shares
-        elif price_today < low:
-            num_shares = int(maxDollarPosition / price_today)
-            positions[i] = -num_shares
+        # Signal decision
+        if short_avg > long_avg * (1 + buffer):
+            targetPos = num_shares
+        elif short_avg < long_avg * (1 - buffer):
+            targetPos = -num_shares
+
+        # hold previous position
         else:
-            positions[i] = 0
+            targetPos = currentPos[i]  
 
-    return positions
+        newPos[i] = targetPos
+
+    currentPos = newPos
+    return newPos
